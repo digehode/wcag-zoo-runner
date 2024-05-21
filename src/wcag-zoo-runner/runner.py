@@ -1,5 +1,5 @@
 """ Simple tool to run a django development server and test the urls with wcag-zoo """
-# pylint: disable=W0511,R0914, W0718
+# pylint: disable=R0914, W0718
 import os
 import subprocess
 import time
@@ -43,9 +43,6 @@ def run_server(host="0.0.0.0", port="8799", logfile="server-wcag-zoo-log.txt"):
 
 def wcag_tool_on_url(tool, url: str, timeout: int, staticpath=".", level="AAA"):
     """Use the provided wcag-zoo tool to analyse the given URL"""
-
-    # TODO: separate out loading content so we can check response
-    # type and apply only the tools that make sense
 
     # Retry multiple times, devrementing retries var to 0
     # Sleep doubles after each retry
@@ -156,21 +153,6 @@ def gather_urls():
     # urls=get_resolver().reverse_dict.keys()
     allurls = {v[1] for k, v in get_resolver(None).reverse_dict.items()}
     urls = []
-
-    # TODO have an exclusion list of regexps?
-    # TODO No: move to reading URLs from a file
-    # TODO comapre with URLs from django
-    # TODO show which regexps haven't had a check
-    # TODO allow certain to be listed as "do not check"
-    # TODO Also a script to produce a template for the URL list
-    #   from the django URLs so you can get started
-    # TODO all basic URLs will be easy, the ones with components
-    #   will be highlighted to allow examples to be included
-    # TODO then also needs a way to load example data?
-    # TODO also what about how to deal with things behind log in?
-
-    # TODO this needs to be a separate project - lots of the future
-    #   items need to be listed somewhere other than as TODO items
 
     for i in allurls:
         if i.startswith("admin"):

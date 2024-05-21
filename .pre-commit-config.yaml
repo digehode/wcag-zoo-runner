@@ -41,9 +41,20 @@ repos:
       - id: flake8
         args: ['--max-line-length=88']
 
+  - repo: local
+    hooks:
+      - id: pylint
+        name: pylint
+        entry: pylint
+        language: system
+        types: [python]
+        args:
+          [ "--disable=F0401",
+            "-rn", # Only display messages
+          ]
 
 # sets up .pre-commit-ci.yaml to ensure pre-commit dependencies stay up to date
 ci:
   autoupdate_schedule: weekly
-  skip: []
+  skip: [pylint]
   submodules: false
