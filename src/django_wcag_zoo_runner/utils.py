@@ -31,7 +31,5 @@ def activate_django_project(search_root="."):
     in order to make use of django funcitons related to the project"""
     package, fullpath = get_django_package(search_root)
     sys.path.append(str(fullpath))
-    print(f"{package} # {fullpath} # {sys.path}")
     settings_module = str(package) + ".settings"
-    print(f"Using {settings_module}")
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", str(settings_module))

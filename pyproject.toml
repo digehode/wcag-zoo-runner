@@ -1,6 +1,6 @@
 
 [project]
-name = "django-wcag-zoo-runner"
+name = "django_wcag_zoo_runner"
 version = "0.0.1"
 authors = [
   { name="James Shuttleworth", email="digehode@googlemail.com" },
