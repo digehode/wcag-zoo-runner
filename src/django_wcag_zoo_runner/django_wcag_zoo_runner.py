@@ -1,5 +1,7 @@
 """ Simple tool to run a django development server and test the urls with wcag-zoo """
+
 # pylint: disable=R0914, W0718
+import argparse
 import os
 import subprocess
 import time
@@ -22,7 +24,7 @@ for details: https://www.gnu.org/licenses/gpl-3.0.html
 """
 
 
-def run_server(host="0.0.0.0", port="8799", logfile="server-wcag-zoo-log.txt"):
+def run_server(host="0.0.0.0", port: int = 8799, logfile="server-wcag-zoo-log.txt"):
     """Run the django development server"""
 
     with open(logfile, "w", encoding="utf-8") as log:
@@ -165,9 +167,50 @@ def gather_urls():
 
 def main():
     """Run on execution"""
+    parser = argparse.ArgumentParser(
+        prog="python -m django_wcag_zoo_runner",
+        description="Run WCAG zoo tools on a django project",
+        epilog="Provided under GPL v3",
+    )
+    parser.add_argument(
+        "--port",
+        "-p",
+        type=int,
+        help="Port on which to run demo server",
+        default=8799,
+    )
+    parser.add_argument(
+        "--verbosity",
+        "-v",
+        type=int,
+        help="Set verbosity (0 - minimal, 1 - skip successes, 2 - show all reports)."
+        + " Default: 1",
+        metavar="N",
+        choices=[0, 1, 2],
+        default=1,
+    )
+    parser.add_argument(
+        "--staticpath",
+        "-s",
+        type=str,
+        help="Set path for static files. Default: ./static",
+        metavar="STATIC",
+        default="./static",
+    )
+    parser.add_argument(
+        "--level",
+        "-l",
+        type=str,
+        help="Set WCAG zoo level: AA or AAA. Default: AAA",
+        metavar="LEVEL",
+        choices=["AA", "AAA"],
+        default="AAA",
+    )
+    args = parser.parse_args()
+
     host = "0.0.0.0"
-    port = 8799
-    staticpath = "./var"
+    port = args.port
+    print(args.port)
     level = "AAA"
     activate_django_project()
     django.setup()
@@ -180,9 +223,9 @@ def main():
         for url in urls:
             print(f"Testing url: '{url}'")
             result = wcag_on_url(
-                f"http://{host}:{port}/{url}", staticpath=staticpath, level=level
+                f"http://{host}:{port}/{url}", staticpath=args.staticpath, level=level
             )
-            display_results(result, verbosity=1)
+            display_results(result, verbosity=args.verbosity)
     except ConnectionError as e:
         print(f"Failed to load and test: {e}")
         a.terminate()
@@ -195,11 +238,3 @@ def main():
 if __name__ == "__main__":
     print(LICENCE)
     main()
-
-
-# os.environ.setdefault("DJANGO_SETTINGS_MODULE", "server.settings")
-
-# from django.core.management import call_command
-# from django.core.wsgi import get_wsgi_application
-# application = get_wsgi_application()
-# call_command('runserver',  '127.0.0.1:8000')
