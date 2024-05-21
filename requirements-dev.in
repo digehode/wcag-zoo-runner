@@ -1,2 +1,16 @@
 build >= 1.2.1
 hatchling >= 1.24.2
+black >= 23.3.0
+coverage >= 7.2.2
+isort >= 5.12.0
+pip-tools >= 6.12.3
+jsonschema >= 4.22.0
+requests >= 2.31.0
+pre-commit >= 3.4.0
+pylint >= 3.2.1
+wcag-zoo >= 0.2.6
+termcolor >= 2.4.0
+django
+pre-commit >= 3.7.1
+wcag-zoo >= 0.2.6
+termcolor >= 2.4.0
