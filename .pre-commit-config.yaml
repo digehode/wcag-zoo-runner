@@ -49,7 +49,7 @@ repos:
         language: system
         types: [python]
         args:
-          [ "--disable=F0401",
+          [
             "-rn", # Only display messages
           ]
 
