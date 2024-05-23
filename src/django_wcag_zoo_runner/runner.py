@@ -10,11 +10,12 @@ import django
 import requests
 from django.urls import get_resolver
 from termcolor import colored
-from utils import activate_django_project
 from wcag_zoo.validators.anteater import Anteater
 from wcag_zoo.validators.ayeaye import Ayeaye
 from wcag_zoo.validators.molerat import Molerat
 from wcag_zoo.validators.tarsier import Tarsier
+
+from .utils import activate_django_project
 
 LICENCE = """wcag-zoo-runner  Copyright (C) 2024  James Shuttleworth
 This program comes with ABSOLUTELY NO WARRANTY;
@@ -174,6 +175,8 @@ def gather_urls():
 
 def main():
     """Run on execution"""
+    print(LICENCE)
+
     parser = argparse.ArgumentParser(
         prog="python -m django_wcag_zoo_runner",
         description="Run WCAG zoo tools on a django project",
@@ -243,5 +246,4 @@ def main():
 
 
 if __name__ == "__main__":
-    print(LICENCE)
     main()
