@@ -77,10 +77,8 @@ def get_url(url: str, timeout: int):
     return content
 
 
-def wcag_tool_on_url(tool, url: str, timeout: int, staticpath=".", level="AAA"):
-    """Use the provided wcag-zoo tool to analyse the given URL"""
-
-    content = get_url(url, timeout)
+def wcag_tool_on_content(tool, content: str, staticpath=".", level="AAA"):
+    """Use the provided wcag-zoo tool to analyse the given content"""
 
     instance = tool(staticpath=staticpath, level=level)
     results = instance.validate_document(content.content)
@@ -110,10 +108,13 @@ def wcag_on_url(url: str, timeout: int = 3, staticpath=".", level="AAA"):
     results = {i: [] for i in ["success", "failures", "warnings", "skipped"]}
 
     tools = [Tarsier, Anteater, Ayeaye, Molerat]
+    content = get_url(url, timeout)
+    content_type = content.headers["Content-Type"]
+    if not content_type.startswith("text/html"):
+        print(f"{url} not HTML? Content type={content_type}")
+        return results
     for tool in tools:
-        result = wcag_tool_on_url(
-            tool, url, timeout, staticpath=staticpath, level=level
-        )
+        result = wcag_tool_on_content(tool, content, staticpath=staticpath, level=level)
         results = combine_results(results, result)
     return results
 
