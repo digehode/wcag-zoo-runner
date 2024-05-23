@@ -43,8 +43,8 @@ def run_server(host="0.0.0.0", port: int = 8799, logfile="server-wcag-zoo-log.tx
         )
 
 
-def wcag_tool_on_url(tool, url: str, timeout: int, staticpath=".", level="AAA"):
-    """Use the provided wcag-zoo tool to analyse the given URL"""
+def get_url(url: str, timeout: int):
+    """Load content from the given URL"""
 
     # Retry multiple times, devrementing retries var to 0
     # Sleep doubles after each retry
@@ -73,6 +73,13 @@ def wcag_tool_on_url(tool, url: str, timeout: int, staticpath=".", level="AAA"):
             retries -= 1
             time.sleep(delay)
             delay *= 2
+    return content
+
+
+def wcag_tool_on_url(tool, url: str, timeout: int, staticpath=".", level="AAA"):
+    """Use the provided wcag-zoo tool to analyse the given URL"""
+
+    content = get_url(url, timeout)
 
     instance = tool(staticpath=staticpath, level=level)
     results = instance.validate_document(content.content)
