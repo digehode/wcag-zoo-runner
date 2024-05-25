@@ -9,12 +9,12 @@ import time
 import django
 import requests
 from django.urls import get_resolver
-from termcolor import colored
 from wcag_zoo.validators.anteater import Anteater
 from wcag_zoo.validators.ayeaye import Ayeaye
 from wcag_zoo.validators.molerat import Molerat
 from wcag_zoo.validators.tarsier import Tarsier
 
+from . import dwr_logging
 from .utils import activate_django_project
 
 LICENCE = """wcag-zoo-runner  Copyright (C) 2024  James Shuttleworth
@@ -44,7 +44,7 @@ def run_server(host="0.0.0.0", port: int = 8799, logfile="server-wcag-zoo-log.tx
         )
 
 
-def get_url(url: str, timeout: int):
+def get_url(url: str, timeout: int, logger):
     """Load content from the given URL"""
 
     # Retry multiple times, devrementing retries var to 0
@@ -65,11 +65,11 @@ def get_url(url: str, timeout: int):
             Exception,
         ) as e:
             success = False
-            print("Server not responding")
+            logger.debug("Server not responding")
             if retries > 0:
-                print(f"Retry after a delay of {delay}")
+                logger.debug(f"Retry after a delay of {delay}")
             else:
-                print("No more retries")
+                logger.error("No more retries - giving up")
                 raise ConnectionError("Failed to reach server") from e
             retries -= 1
             time.sleep(delay)
@@ -77,17 +77,17 @@ def get_url(url: str, timeout: int):
     return content
 
 
-def wcag_tool_on_content(tool, content: str, staticpath=".", level="AAA"):
+def wcag_tool_on_content(tool, content: str, url: str, staticpath=".", level="AAA"):
     """Use the provided wcag-zoo tool to analyse the given content"""
 
     instance = tool(staticpath=staticpath, level=level)
     results = instance.validate_document(content.content)
-
     flat_results = {i: [] for i in ["success", "failures", "warnings", "skipped"]}
     for h in flat_results.keys():
         for i in results[h]:
             for j in results[h][i]:
                 for k in results[h][i][j]:
+                    k["url"] = url
                     flat_results[h].append(k)
 
     return flat_results
@@ -103,26 +103,28 @@ def combine_results(res1, res2):
     return result
 
 
-def wcag_on_url(url: str, timeout: int = 3, staticpath=".", level="AAA"):
+def wcag_on_url(url: str, logger, timeout: int = 3, staticpath=".", level="AAA"):
     """Run all wcag-zoo tools on the given url"""
     results = {i: [] for i in ["success", "failures", "warnings", "skipped"]}
 
     tools = [Tarsier, Anteater, Ayeaye, Molerat]
-    content = get_url(url, timeout)
+    content = get_url(url, timeout, logger)
     content_type = content.headers["Content-Type"]
     if not content_type.startswith("text/html"):
-        print(f"{url} not HTML? Content type={content_type}")
+        logger.info(f"Skipping {url} - not HTML - Content type={content_type}")
         return results
     for tool in tools:
-        result = wcag_tool_on_content(tool, content, staticpath=staticpath, level=level)
+        result = wcag_tool_on_content(
+            tool, content, url, staticpath=staticpath, level=level
+        )
         results = combine_results(results, result)
     return results
 
 
-def display_results_hierarchy(h, style="white"):
+def process_results_hierarchy(h):
     """Diplay results in a given style"""
     output = ""
-    mainkeys = ["guideline", "technique", "xpath", "classes", "id"]
+    mainkeys = ["url", "guideline", "technique", "xpath", "classes", "id"]
     for i in h:
         block = ""
         for k in mainkeys:
@@ -133,35 +135,29 @@ def display_results_hierarchy(h, style="white"):
             block += f"\t{k}: {i[k]}\n"
         block = block.rstrip()
         output += block + "\n\t----\n"
-    print(colored(output, style))
+    return output
 
 
-def display_results(results, verbosity: int = 2):
-    """display each category of results in an appropriate style
+def display_results(results, logger):
+    """display each category of results in an appropriate style"""
 
-    verbosity
-    ---------
-
-    2 (default) : show all categories, even if empty
-    1 : show failures, warnings and skipped checks
-    0 : show only failures
-    """
-
-    if verbosity > 1:
-        print(colored("✓ SUCCESSES", "green"))
-        display_results_hierarchy(results["success"], "green")
-    print(colored("✗ FAILURES", "red"))
-    display_results_hierarchy(results["failures"], "red")
-    if verbosity > 0:
-        print(colored("‼ WARNINGS", "yellow"))
-        display_results_hierarchy(results["warnings"], "yellow")
-        print(colored("↷ SKIPPED", "blue"))
-        display_results_hierarchy(results["skipped"], "blue")
+    if len(results["success"]) > 0:
+        logger.full("✓ SUCCESSES")
+        logger.full(process_results_hierarchy(results["success"]))
+    if len(results["failures"]) > 0:
+        logger.error("✗ FAILURES")
+        logger.error(process_results_hierarchy(results["failures"]))
+    if len(results["warnings"]) > 0:
+        logger.warning("‼ WARNINGS")
+        logger.warning(process_results_hierarchy(results["warnings"]))
+    if len(results["skipped"]) > 0:
+        logger.info("↷ SKIPPED")
+        logger.info(process_results_hierarchy(results["skipped"]))
 
 
 def gather_urls():
     """Returns a list of URLS for the django app"""
-    # urls=get_resolver().reverse_dict.keys()
+
     allurls = {v[1] for k, v in get_resolver(None).reverse_dict.items()}
     urls = []
 
@@ -177,6 +173,12 @@ def gather_urls():
 def main():
     """Run on execution"""
     print(LICENCE)
+    # verbosity
+    # ---------
+
+    # 2 (default) : show all categories, even if empty
+    # 1 : show failures, warnings and skipped checks
+    # 0 : show only failures
 
     parser = argparse.ArgumentParser(
         prog="python -m django_wcag_zoo_runner",
@@ -194,10 +196,12 @@ def main():
         "--verbosity",
         "-v",
         type=int,
-        help="Set verbosity (0 - minimal, 1 - skip successes, 2 - show all reports)."
+        help="Set verbosity (0 - errors only, 1 - include warnings, "
+        + "2 - include skipped tests, 3 - include successful tests, "
+        + "4 - include debug info)."
         + " Default: 1",
         metavar="N",
-        choices=[0, 1, 2],
+        choices=[0, 1, 2, 3, 4],
         default=1,
     )
     parser.add_argument(
@@ -219,30 +223,31 @@ def main():
     )
     args = parser.parse_args()
 
+    logger = dwr_logging.Logger(args.verbosity)
     host = "0.0.0.0"
     port = args.port
-    print(args.port)
     level = "AAA"
     activate_django_project()
     django.setup()
     urls = gather_urls()
-    for i in urls:
-        print(i)
-
+    logger.debug(f"Gathered URLS: {urls}")
     a = run_server(host, port)
     try:
         for url in urls:
-            print(f"Testing url: '{url}'")
+            logger.debug(f"Testing url: '{url}'")
             result = wcag_on_url(
-                f"http://{host}:{port}/{url}", staticpath=args.staticpath, level=level
+                f"http://{host}:{port}/{url}",
+                logger,
+                staticpath=args.staticpath,
+                level=level,
             )
-            display_results(result, verbosity=args.verbosity)
+            display_results(result, logger)
     except ConnectionError as e:
-        print(f"Failed to load and test: {e}")
+        logger.debug(f"Failed to load and test: {e}")
         a.terminate()
     finally:
         # FUTURE: have fail-on-error version and interactive shell version
-        print("Terminating server process")
+        logger.debug("Terminating server process")
         a.terminate()
 
 
