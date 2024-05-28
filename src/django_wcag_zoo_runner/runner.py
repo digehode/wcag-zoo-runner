@@ -2,6 +2,7 @@
 
 # pylint: disable=R0914, W0718
 import argparse
+import configparser
 import os
 import re
 import subprocess
@@ -22,6 +23,13 @@ This is free software, and you are welcome to redistribute it
 under certain conditions, specified by the GPL V3;
 for details: https://www.gnu.org/licenses/gpl-3.0.html
 """
+
+
+def load_conf(configfile: str = "wcag_zoo_runner.ini"):
+    """Load config file and return congifparser object"""
+    config = configparser.ConfigParser(delimiters=("="), allow_no_value=True)
+    config.read(configfile)
+    return config
 
 
 def run_server(host="0.0.0.0", port: int = 8799, logfile="server-wcag-zoo-log.txt"):
@@ -159,7 +167,7 @@ def sanitise_url(url: str):
     replacements = [(r"\Z", ""), (r"\.", ".")]
     for r in replacements:
         url = url.replace(r[0], r[1])
-    return f"/{url}"
+    return f"{url}"
 
 
 def url_test_excluded_path(url: str):
@@ -218,6 +226,46 @@ def gather_urls():
     print("[exclude]")
     for url in urls["exclude"]:
         print(sanitise_url(url))
+
+
+def test_coverage(urls, logger):
+    """Given a list of grouped URLs (include/exclude keys in dict), check the list
+    covers the full range of URLs for the django project
+    """
+
+    django_urls = project_urls()
+    proposed = list(urls["include"]) + list(urls["exclude"])
+    logger.debug("Checking coverage")
+
+    for i in django_urls:
+        found = False
+        url = f"/{i[1]}"
+        logger.debug(f"Checking project URL: '{url}'")
+        if url in proposed:
+            found = True
+            logger.debug("\tFound plain match")
+        else:
+            # Check if we have a regex that matches an included URL
+            r = re.compile(url)
+            for j in urls["include"]:
+                if r.match(j):
+                    logger.debug(f"\tFound included URL match to regex: '{j}'")
+                    found = True
+                    break
+            if found:
+                continue
+            # Check if an excluded URL is a regex that covers this
+            for j in urls["exclude"]:
+                try:
+                    r = re.compile(j)
+                except re.error:
+                    continue
+                if r.match(url):
+                    logger.debug(f"\tFound exclude regex that matches URL: '{j}'")
+                    found = True
+                    break
+        if not found:
+            logger.warning(f"Couldn't find a match for project URL '{url}'")
 
 
 def main():
@@ -293,14 +341,29 @@ def main():
         return
 
     a = run_server(host, port)
-    urls = generate_default_urls()["include"]
+
+    config = load_conf()
+    if "include" in config.sections():
+        urls = config
+        test_coverage(urls, logger)
+    else:
+        logger.warning(
+            "Using default URL gathering. This will "
+            + "not guarantee coverage and will almost certainly"
+            + " ignore key URLs. Create ini file and explicitly"
+            + " list URLs to test in order to test complex URLs"
+            + " and enable coverage testing.\n"
+            + "Use the --gather-urls option to generate "
+            + "starting content for an ini file"
+        )
+        urls = generate_default_urls()
 
     try:
-        for url in urls:
+        for url in urls["include"]:
             url = sanitise_url(url)
             logger.debug(f"Testing url: '{url}'")
             result = wcag_on_url(
-                f"http://{host}:{port}/{url}",
+                f"http://{host}:{port}{url}",
                 logger,
                 staticpath=args.staticpath,
                 level=level,
