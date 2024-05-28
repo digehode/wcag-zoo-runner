@@ -3,19 +3,18 @@
 # pylint: disable=R0914, W0718
 import argparse
 import os
+import re
 import subprocess
 import time
 
-import django
 import requests
-from django.urls import get_resolver
 from wcag_zoo.validators.anteater import Anteater
 from wcag_zoo.validators.ayeaye import Ayeaye
 from wcag_zoo.validators.molerat import Molerat
 from wcag_zoo.validators.tarsier import Tarsier
 
 from . import dwr_logging
-from .utils import activate_django_project
+from .utils import activate_django_project, project_urls
 
 LICENCE = """wcag-zoo-runner  Copyright (C) 2024  James Shuttleworth
 This program comes with ABSOLUTELY NO WARRANTY;
@@ -155,24 +154,75 @@ def display_results(results, logger):
         logger.info(process_results_hierarchy(results["skipped"]))
 
 
-def gather_urls():
-    """Returns a list of URLS for the django app"""
+def sanitise_url(url: str):
+    """Remove Django URL matching info from given URL"""
+    replacements = [(r"\Z", ""), (r"\.", ".")]
+    for r in replacements:
+        url = url.replace(r[0], r[1])
+    return f"/{url}"
 
-    allurls = {v[1] for k, v in get_resolver(None).reverse_dict.items()}
-    urls = []
 
-    for i in allurls:
-        if i.startswith("admin"):
-            continue
-        if i.startswith("media"):
-            continue
-        urls.append(i.replace(r"\Z", "").replace(r"\.", "."))
+def url_test_excluded_path(url: str):
+    """Test if a URL is probably NOT worth testing
+    - that is, is it in one of the usually excluded paths?"""
+
+    excluded_starts = ["admin", "media", "static", "__debug__"]
+    for ex in excluded_starts:
+        if url.startswith(ex):
+            return True
+    return False
+
+
+def url_test_includes_values(url: str):
+    """Test if a given URL string has places for values
+    eg: /products/<int:prod_id>/detail
+    """
+
+    exp = ".*<.*>.*"
+    if re.search(exp, url) is not None:
+        return True
+    return False
+
+
+def generate_default_urls():
+    """Generate a list of URLs that can probably be tested
+
+    Used when a list isn't provided and won't deal with any URLs thay
+    have parameters, admin, etc. and also to create a basic config file
+    """
+
+    allurls = project_urls()
+    urls = {"include": [], "exclude": [], "complex": []}
+
+    for url in allurls:
+        i = url[1]
+        if url_test_excluded_path(i):
+            urls["exclude"].append(i)
+        elif url_test_includes_values(i):
+            urls["complex"].append(i)
+        else:
+            urls["include"].append(i)
+
     return urls
+
+
+def gather_urls():
+    """Display Django URLs on stdout"""
+    urls = generate_default_urls()
+    print("[include]")
+    for url in urls["include"]:
+        print(sanitise_url(url))
+    print("[test]")
+    for url in urls["complex"]:
+        print(f"## {sanitise_url(url)}")
+    print("[exclude]")
+    for url in urls["exclude"]:
+        print(sanitise_url(url))
 
 
 def main():
     """Run on execution"""
-    print(LICENCE)
+
     # verbosity
     # ---------
 
@@ -221,19 +271,33 @@ def main():
         choices=["AA", "AAA"],
         default="AAA",
     )
+
+    parser.add_argument(
+        "--gather-urls",
+        action=argparse.BooleanOptionalAction,
+        help="Output list of discovered URL patterns",
+        default=False,
+    )
+
     args = parser.parse_args()
 
     logger = dwr_logging.Logger(args.verbosity)
+    logger.info(LICENCE)
     host = "0.0.0.0"
     port = args.port
-    level = "AAA"
+    level = args.level
     activate_django_project()
-    django.setup()
-    urls = gather_urls()
-    logger.debug(f"Gathered URLS: {urls}")
+
+    if args.gather_urls:
+        gather_urls()
+        return
+
     a = run_server(host, port)
+    urls = generate_default_urls()["include"]
+
     try:
         for url in urls:
+            url = sanitise_url(url)
             logger.debug(f"Testing url: '{url}'")
             result = wcag_on_url(
                 f"http://{host}:{port}/{url}",
