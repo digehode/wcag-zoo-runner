@@ -6,6 +6,7 @@ import configparser
 import os
 import re
 import subprocess
+import sys
 import time
 
 import requests
@@ -231,12 +232,14 @@ def gather_urls():
 def test_coverage(urls, logger):
     """Given a list of grouped URLs (include/exclude keys in dict), check the list
     covers the full range of URLs for the django project
+
+    Returns True if all project URLs are covered represented in urls parameter
     """
 
     django_urls = project_urls()
     proposed = list(urls["include"]) + list(urls["exclude"])
     logger.debug("Checking coverage")
-
+    success = True
     for i in django_urls:
         found = False
         url = f"/{i[1]}"
@@ -265,7 +268,9 @@ def test_coverage(urls, logger):
                     found = True
                     break
         if not found:
+            success = False
             logger.warning(f"Couldn't find a match for project URL '{url}'")
+    return success
 
 
 def main():
@@ -277,6 +282,9 @@ def main():
     # 2 (default) : show all categories, even if empty
     # 1 : show failures, warnings and skipped checks
     # 0 : show only failures
+
+    coverage_pass = True  # Set to false if coverage fails
+    test_pass = True  # set to false if a test fails
 
     parser = argparse.ArgumentParser(
         prog="python -m django_wcag_zoo_runner",
@@ -345,7 +353,7 @@ def main():
     config = load_conf()
     if "include" in config.sections():
         urls = config
-        test_coverage(urls, logger)
+        coverage_pass = test_coverage(urls, logger)
     else:
         logger.warning(
             "Using default URL gathering. This will "
@@ -369,13 +377,20 @@ def main():
                 level=level,
             )
             display_results(result, logger)
+            if len(result["failures"]) + len(result["warnings"]) > 0:
+                test_pass = False
+
     except ConnectionError as e:
         logger.debug(f"Failed to load and test: {e}")
         a.terminate()
     finally:
-        # FUTURE: have fail-on-error version and interactive shell version
         logger.debug("Terminating server process")
         a.terminate()
+
+    if test_pass and coverage_pass:
+        sys.exit(0)
+    else:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
